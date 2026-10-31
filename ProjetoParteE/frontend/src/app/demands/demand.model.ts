@@ -26,6 +26,7 @@ export interface DemandQuery {
   page: number;
   pageSize: number;
   queue?: string;
+  search?: string;
   status?: DemandStatus;
   sort: SortField;
   order: SortOrder;

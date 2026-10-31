@@ -83,7 +83,8 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 
 | Rota | O que faz |
 | --- | --- |
-| `GET /demands?page&pageSize&queue&status&sort&order` | Lista paginada com total. `sort` é `id` ou `updatedAt`; `order` é `asc` ou `desc`. Parâmetro desconhecido ou valor inválido → `400`. |
+| `GET /demands?page&pageSize&queue&status&search&sort&order` | Lista paginada com total. `queue` e `status` são filtros exatos; `search` procura no título, no nº da demanda, na fila e no nome do responsável. `sort` é `id` ou `updatedAt`; `order` é `asc` ou `desc`. Parâmetro desconhecido ou valor inválido → `400`. |
+| `GET /demands/queues` | Filas existentes, para o seletor da tela. |
 | `POST /demands/:id/reserve` | Reserva. Quem perde a disputa recebe `409` com o nome de quem ficou e o estado atual da demanda. O mesmo usuário reservando de novo recebe `200`. |
 | `POST /demands/:id/finish` | Encerra. Corpo `{ outcome, failureReason?, note? }`; `failureReason` é obrigatório quando `outcome` é `failure`. Só o dono da reserva ou quem tem `demands:supervise`. |
 
@@ -100,6 +101,8 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 **409 devolve o estado atual.** O corpo do erro inclui a demanda como está no banco, para a tela atualizar só aquela linha sem recarregar a lista.
 
 **Entrada validada, saída serializada pelo Zod.** A query string usa `z.strictObject` (parâmetro desconhecido vira `400`). O corpo do encerramento é uma união discriminada por `outcome`. A coluna de ordenação sai de um mapa fixo no código, nunca do texto enviado pelo cliente. As respostas declaram schema, então só os campos previstos chegam ao cliente.
+
+**Busca separada dos filtros.** O enunciado pede filtro por fila e situação, que são comparações exatas; na tela, os dois viraram listas de seleção para não haver erro de digitação. A busca livre é um campo à parte, com `LIKE '%texto%'`. Os caracteres `%` e `_` digitados pelo usuário são escapados, para serem procurados como texto e não funcionarem como curingas. No frontend, a busca espera 400 ms sem digitação antes de consultar.
 
 **Testes contra o banco real.** O que precisa ser provado é o comportamento das travas do InnoDB, e um mock não provaria isso. O teste dispara reservas simultâneas 20 vezes seguidas e confere status, mensagem e quantidade de linhas no histórico. Ele foi validado trocando temporariamente a reserva pela versão "lê e depois escreve": nessa versão, os testes de corrida falham.
 
@@ -122,6 +125,7 @@ Os prints mostram:
 ## O que eu faria com mais tempo
 
 - Índice `(queue, status, updated_at, id)` e paginação por cursor em vez de `OFFSET`, que fica lento em páginas altas.
+- Busca com índice `FULLTEXT` no título. O `LIKE '%texto%'` não consegue usar índice e precisa ler a tabela inteira; com 5 mil linhas isso é imperceptível, mas não escala para milhões.
 - Autenticação real com JWT e escopos no token, em vez dos headers.
 - Testes de componente no frontend (formulário e tratamento do 409) e um teste de ponta a ponta.
 - Atualização em tempo real da lista (SSE ou WebSocket) quando outra pessoa reserva.

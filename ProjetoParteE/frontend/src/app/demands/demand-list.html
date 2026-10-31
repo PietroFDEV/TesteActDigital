@@ -1,13 +1,23 @@
 <section class="filters" aria-label="Filtros">
+  <div class="field search">
+    <label for="search">Buscar</label>
+    <input
+      id="search"
+      type="search"
+      placeholder="Título, nº, fila ou responsável"
+      autocomplete="off"
+      [value]="searchText()"
+      (input)="searchText.set($any($event.target).value)"
+    />
+  </div>
   <div class="field">
     <label for="queue">Fila</label>
-    <input
-      id="queue"
-      type="search"
-      placeholder="Ex.: suporte"
-      [value]="queue()"
-      (change)="setQueue($any($event.target).value)"
-    />
+    <select id="queue" (change)="setQueue($any($event.target).value)">
+      <option value="" [selected]="queue() === ''">Todas</option>
+      @for (q of queues.value() ?? []; track q) {
+        <option [value]="q" [selected]="queue() === q">{{ q }}</option>
+      }
+    </select>
   </div>
   <div class="field">
     <label for="status">Situação</label>
@@ -99,7 +109,7 @@
           } @empty {
             @if (!demands.isLoading()) {
               <tr>
-                <td colspan="6" class="state">Nenhuma demanda com esses filtros. Limpe a fila ou a situação para ver mais.</td>
+                <td colspan="6" class="state">Nenhuma demanda com esses filtros. Limpe a busca, a fila ou a situação para ver mais.</td>
               </tr>
             }
           }
