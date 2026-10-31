@@ -57,6 +57,16 @@ export async function listDemands(
     conditions.push('d.status = ?');
     params.push(q.status);
   }
+  if (q.search !== undefined) {
+    // % e _ são curingas do LIKE: escapados para o texto do usuário ser buscado literalmente.
+    const like = `%${q.search.replace(/[\\%_]/g, '\\$&')}%`;
+    const asId = /^\d+$/.test(q.search) ? Number(q.search) : null;
+    conditions.push(
+      `(d.title LIKE ? OR d.queue LIKE ? OR u.name LIKE ?${asId !== null ? ' OR d.id = ?' : ''})`,
+    );
+    params.push(like, like, like);
+    if (asId !== null) params.push(asId);
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Nome de coluna e direção nunca vêm do cliente: saem de valores fixos do código.
@@ -73,10 +83,22 @@ export async function listDemands(
       q.pageSize,
       offset,
     ]),
-    db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM demand d ${where}`, params),
+    db.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+         FROM demand d
+         LEFT JOIN app_user u ON u.id = d.worker_id
+         ${where}`,
+      params,
+    ),
   ]);
 
   return { items: rows.map(toDemand), total: Number(countRows[0]?.total ?? 0) };
+}
+
+/** Filas existentes, para o filtro da tela. O índice (queue, status) atende sem ler a tabela. */
+export async function listQueues(db: Db): Promise<string[]> {
+  const [rows] = await db.query<RowDataPacket[]>('SELECT DISTINCT queue FROM demand ORDER BY queue');
+  return rows.map((r) => r.queue as string);
 }
 
 /**

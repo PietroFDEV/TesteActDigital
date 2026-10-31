@@ -23,6 +23,8 @@ export const ListQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   queue: z.string().trim().min(1).max(40).optional(),
+  /** Busca livre: título, nº da demanda, fila ou nome do responsável. */
+  search: z.string().trim().min(1).max(100).optional(),
   status: z.coerce
     .number()
     .pipe(z.literal([DemandStatus.OPEN, DemandStatus.RESERVED, DemandStatus.CLOSED]))
@@ -39,6 +41,8 @@ export const DemandPageSchema = z.object({
   pageSize: z.number().int(),
 });
 export type DemandPage = z.infer<typeof DemandPageSchema>;
+
+export const QueueListSchema = z.object({ items: z.array(z.string()) });
 
 export const IdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),

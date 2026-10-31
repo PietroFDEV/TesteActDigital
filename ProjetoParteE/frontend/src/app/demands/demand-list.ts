@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { rxResource } from '@angular/core/rxjs-interop';
+import { rxResource, takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { Session } from '../core/session';
 import {
   Demand,
@@ -36,8 +37,15 @@ export class DemandList {
   protected readonly statusLabel = STATUS_LABEL;
   protected readonly statusOptions: DemandStatus[] = [1, 2, 3];
 
+  /** Filas existentes no banco, para o seletor de fila. */
+  protected readonly queues = rxResource({ stream: () => this.api.queues() });
+
   // Estado dos filtros: cada mudança gera uma nova consulta.
   protected readonly queue = signal('');
+  /** O que está digitado no campo de busca, a cada tecla. */
+  protected readonly searchText = signal('');
+  /** A busca efetivamente aplicada, só depois de uma pausa na digitação. */
+  private readonly search = signal('');
   protected readonly status = signal<DemandStatus | null>(null);
   protected readonly sort = signal<SortField>('id');
   protected readonly order = signal<SortOrder>('desc');
@@ -47,6 +55,7 @@ export class DemandList {
     page: this.page(),
     pageSize: PAGE_SIZE,
     queue: this.queue() || undefined,
+    search: this.search() || undefined,
     status: this.status() ?? undefined,
     sort: this.sort(),
     order: this.order(),
@@ -71,8 +80,23 @@ export class DemandList {
   protected readonly messages = signal<ReadonlyMap<number, RowMessage>>(new Map());
   protected readonly finishing = signal<Demand | null>(null);
 
+  constructor() {
+    // Espera 400 ms sem digitação antes de consultar, para não disparar uma requisição por tecla.
+    toObservable(this.searchText)
+      .pipe(
+        debounceTime(400),
+        map((text) => text.trim()),
+        distinctUntilChanged(),
+        takeUntilDestroyed(),
+      )
+      .subscribe((text) => {
+        this.search.set(text);
+        this.page.set(1);
+      });
+  }
+
   protected setQueue(value: string): void {
-    this.queue.set(value.trim());
+    this.queue.set(value);
     this.page.set(1);
   }
 

@@ -17,14 +17,16 @@ Versão mínima da fila de Demandas do Órbita: API em Fastify + Zod + mysql2 (s
 
 ## Como rodar
 
-Pré-requisitos: Node 20.19 ou mais recente (exigência do Angular 21) e o MySQL do `docker-compose.yml` fornecido pelo time.
+Pré-requisitos: Docker e Node 20.19 ou mais recente (exigência do Angular 21).
 
 ```bash
-docker compose up -d          # banco do time, com as 5 mil demandas
+# Banco (porta 3306), com schema e dados de exemplo
+docker compose up -d
+docker compose ps             # espere o status "healthy"
 
 # Backend (porta 3000)
 cd backend
-cp .env.example .env          # ajuste DATABASE_URL conforme o docker-compose
+cp .env.example .env
 npm install
 npm run dev
 
@@ -37,7 +39,24 @@ npm install
 npm start
 ```
 
-Abra http://localhost:4200. No topo dá para trocar o número do operador e ligar o escopo de supervisão, para simular duas pessoas disputando a mesma demanda (duas abas, um operador em cada).
+Abra http://localhost:4200. No topo dá para trocar o número do operador (de 1 a 8 nos dados de exemplo) e ligar o escopo de supervisão, para simular duas pessoas disputando a mesma demanda (duas abas, um operador em cada).
+
+## Banco de dados local
+
+O enunciado diz que o time forneceria um `docker-compose.yml` com 5 mil demandas de exemplo, mas esse arquivo não chegou até mim. Para conseguir rodar e testar o projeto, criei com a ajuda do Claude um ambiente equivalente:
+
+- `docker-compose.yml`: um MySQL 8.4 com usuário `app` / senha `app` e banco `demandas`.
+- `db/init/01-schema.sql`: as três tabelas exatamente como estão no enunciado.
+- `db/init/02-seed.sql`: 8 operadores e 5 mil demandas em 4 filas (`suporte`, `vendas`, `retencao`, `cobranca`), sendo cerca de 70% abertas, 20% reservadas e 10% encerradas, com histórico coerente em `demand_trace`.
+
+Os scripts de `db/init` rodam só na primeira vez que o volume é criado. Para recriar o banco do zero:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+Se o time enviar o `docker-compose.yml` oficial, basta usá-lo no lugar deste e ajustar a `DATABASE_URL` no `.env`. O código não depende de nada específico destes dados: os testes criam e apagam os próprios registros.
 
 ## Stack
 
@@ -64,7 +83,8 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 
 | Rota | O que faz |
 | --- | --- |
-| `GET /demands?page&pageSize&queue&status&sort&order` | Lista paginada com total. `sort` é `id` ou `updatedAt`; `order` é `asc` ou `desc`. Parâmetro desconhecido ou valor inválido → `400`. |
+| `GET /demands?page&pageSize&queue&status&search&sort&order` | Lista paginada com total. `queue` e `status` são filtros exatos; `search` procura no título, no nº da demanda, na fila e no nome do responsável. `sort` é `id` ou `updatedAt`; `order` é `asc` ou `desc`. Parâmetro desconhecido ou valor inválido → `400`. |
+| `GET /demands/queues` | Filas existentes, para o seletor da tela. |
 | `POST /demands/:id/reserve` | Reserva. Quem perde a disputa recebe `409` com o nome de quem ficou e o estado atual da demanda. O mesmo usuário reservando de novo recebe `200`. |
 | `POST /demands/:id/finish` | Encerra. Corpo `{ outcome, failureReason?, note? }`; `failureReason` é obrigatório quando `outcome` é `failure`. Só o dono da reserva ou quem tem `demands:supervise`. |
 
@@ -82,19 +102,35 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 
 **Entrada validada, saída serializada pelo Zod.** A query string usa `z.strictObject` (parâmetro desconhecido vira `400`). O corpo do encerramento é uma união discriminada por `outcome`. A coluna de ordenação sai de um mapa fixo no código, nunca do texto enviado pelo cliente. As respostas declaram schema, então só os campos previstos chegam ao cliente.
 
+**Busca separada dos filtros.** O enunciado pede filtro por fila e situação, que são comparações exatas; na tela, os dois viraram listas de seleção para não haver erro de digitação. A busca livre é um campo à parte, com `LIKE '%texto%'`. Os caracteres `%` e `_` digitados pelo usuário são escapados, para serem procurados como texto e não funcionarem como curingas. No frontend, a busca espera 400 ms sem digitação antes de consultar.
+
 **Testes contra o banco real.** O que precisa ser provado é o comportamento das travas do InnoDB, e um mock não provaria isso. O teste dispara reservas simultâneas 20 vezes seguidas e confere status, mensagem e quantidade de linhas no histórico. Ele foi validado trocando temporariamente a reserva pela versão "lê e depois escreve": nessa versão, os testes de corrida falham.
 
 **Frontend.** A lista usa `rxResource`: cada mudança de filtro, ordenação ou página dispara uma nova consulta e cancela a anterior. A validação condicional do motivo liga e desliga o `Validators.required` conforme o resultado escolhido. O estado do formulário vira signal com `toSignal(statusChanges)`, para o botão reagir na hora com OnPush.
 
+## Evidências dos testes locais
+
+A pasta `evidencias`, no mesmo nível de `backend`, `db` e `frontend`, reúne prints que tirei rodando o projeto na minha máquina, com o banco local do `docker-compose.yml` que eu mesmo criei:
+
+```
+evidencias/
+```
+Os prints mostram:
+
+- o banco subindo com status `healthy` em `docker compose ps`;
+- o `npm test` do backend com todos os testes passando, incluindo o de reservas simultâneas;
+- execuções dos comando rodandoos processos;
+- a lista de demandas com filtros e paginação após testar o uso;
+
 ## O que eu faria com mais tempo
 
 - Índice `(queue, status, updated_at, id)` e paginação por cursor em vez de `OFFSET`, que fica lento em páginas altas.
+- Busca com índice `FULLTEXT` no título. O `LIKE '%texto%'` não consegue usar índice e precisa ler a tabela inteira; com 5 mil linhas isso é imperceptível, mas não escala para milhões.
 - Autenticação real com JWT e escopos no token, em vez dos headers.
 - Testes de componente no frontend (formulário e tratamento do 409) e um teste de ponta a ponta.
 - Atualização em tempo real da lista (SSE ou WebSocket) quando outra pessoa reserva.
 - Validar a observação considerando o texto já sem espaços nas pontas também no frontend.
 - Observabilidade: log estruturado com o id da demanda e do usuário em cada mudança.
-- Adição das outras Stacks que o enunciado não solicitou.
 
 ## Uso de IA
 
@@ -105,12 +141,15 @@ O que foi gerado com IA:
 - o código inicial do backend (rotas, schemas Zod, SQL, transações e autenticação por headers);
 - os testes do backend, incluindo o de reservas simultâneas;
 - o código inicial do frontend (lista paginada, reserva com tratamento do 409 e formulário de encerramento);
+- o `docker-compose.yml` e os scripts de `db/init`, porque o arquivo do time não chegou até mim;
 - este README, a partir das decisões tomadas.
 
 A IA também rodou os testes contra um MySQL 8 e abriu a tela num navegador para confirmar o funcionamento antes de me entregar.
 
 O que eu fiz:
 
-- revisei e estudei o código, para conseguir explicar e alterar cada parte;
-- rodei o projeto e os testes no meu ambiente local;
-- Não recebi no email o `docker-compose.yml` do time para rodar e testar com ele.
+- Revisei e estudei o código, para conseguir explicar e alterar cada parte;
+- Rodei o projeto e os testes no meu ambiente local;
+- Não recebi no email o `docker-compose.yml` do time para rodar e testar com ele;
+- Criação do `docker-compose.yml` para realizar os testes;
+- Evidênciei com prints na pasta `evidencias` o que foi rodado e testado.

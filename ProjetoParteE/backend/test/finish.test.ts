@@ -97,6 +97,49 @@ describe('GET /demands', () => {
     expect(body.items[0].id).toBeLessThan(body.items[1].id);
   });
 
+  it('busca por parte do título, nº da demanda e nome do responsável', async () => {
+    const id = await createDemand(pool, 'Roteador piscando luz vermelha');
+    const get = async (search: string) => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/demands?queue=__teste__&search=${encodeURIComponent(search)}`,
+        headers: as(ana.id),
+      });
+      expect(res.statusCode).toBe(200);
+      return res.json().items.map((d: { id: number }) => d.id) as number[];
+    };
+
+    expect(await get('luz verm')).toEqual([id]);
+    expect(await get(String(id))).toContain(id);
+
+    await app.inject({ method: 'POST', url: `/demands/${id}/reserve`, headers: as(bruno.id) });
+    expect(await get('Bruno')).toContain(id);
+  });
+
+  it('busca trata % e _ como texto, não como curinga', async () => {
+    const id = await createDemand(pool, 'Desconto de 50% na fatura');
+    await createDemand(pool, 'Demanda sem porcentagem');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/demands?queue=__teste__&search=${encodeURIComponent('50%')}`,
+      headers: as(ana.id),
+    });
+    expect(res.json().items.map((d: { id: number }) => d.id)).toEqual([id]);
+
+    const all = await app.inject({
+      method: 'GET',
+      url: `/demands?queue=__teste__&search=${encodeURIComponent('%')}`,
+      headers: as(ana.id),
+    });
+    expect(all.json().total).toBe(1);
+  });
+
+  it('lista as filas existentes', async () => {
+    const res = await app.inject({ method: 'GET', url: '/demands/queues', headers: as(ana.id) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toContain('__teste__');
+  });
+
   it('campo de filtro ou ordenação desconhecido devolve 400', async () => {
     for (const qs of ['owner=1', 'sort=title', 'order=up', 'status=9', 'pageSize=1000']) {
       const res = await app.inject({ method: 'GET', url: `/demands?${qs}`, headers: as(ana.id) });

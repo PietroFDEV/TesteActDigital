@@ -1,7 +1,7 @@
 import type { Pool } from 'mysql2/promise';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { SCOPE_SUPERVISE } from '../auth.js';
-import { listDemands } from './repository.js';
+import { listDemands, listQueues } from './repository.js';
 import { finishDemand, reserveDemand } from './service.js';
 import {
   DemandPageSchema,
@@ -10,6 +10,7 @@ import {
   FinishBodySchema,
   IdParamsSchema,
   ListQuerySchema,
+  QueueListSchema,
 } from './schemas.js';
 
 export const demandRoutes: FastifyPluginAsyncZod<{ pool: Pool }> = async (app, { pool }) => {
@@ -20,6 +21,12 @@ export const demandRoutes: FastifyPluginAsyncZod<{ pool: Pool }> = async (app, {
       const { items, total } = await listDemands(pool, req.query);
       return { items, total, page: req.query.page, pageSize: req.query.pageSize };
     },
+  );
+
+  app.get(
+    '/demands/queues',
+    { schema: { response: { 200: QueueListSchema } } },
+    async () => ({ items: await listQueues(pool) }),
   );
 
   app.post(

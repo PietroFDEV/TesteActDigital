@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { ApiError, Demand, DemandPage, DemandQuery, FinishBody } from './demand.model';
 
 @Injectable({ providedIn: 'root' })
@@ -14,6 +14,10 @@ export class DemandsApi {
       if (value !== undefined && value !== '') params = params.set(key, String(value));
     }
     return this.http.get<DemandPage>('/demands', { params });
+  }
+
+  queues(): Observable<string[]> {
+    return this.http.get<{ items: string[] }>('/demands/queues').pipe(map((r) => r.items));
   }
 
   reserve(id: number): Observable<Demand> {
