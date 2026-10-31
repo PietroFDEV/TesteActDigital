@@ -17,14 +17,16 @@ Versão mínima da fila de Demandas do Órbita: API em Fastify + Zod + mysql2 (s
 
 ## Como rodar
 
-Pré-requisitos: Node 20.19 ou mais recente (exigência do Angular 21) e o MySQL do `docker-compose.yml` fornecido pelo time.
+Pré-requisitos: Docker e Node 20.19 ou mais recente (exigência do Angular 21).
 
 ```bash
-docker compose up -d          # banco do time, com as 5 mil demandas
+# Banco (porta 3306), com schema e dados de exemplo
+docker compose up -d
+docker compose ps             # espere o status "healthy"
 
 # Backend (porta 3000)
 cd backend
-cp .env.example .env          # ajuste DATABASE_URL conforme o docker-compose
+cp .env.example .env
 npm install
 npm run dev
 
@@ -37,7 +39,24 @@ npm install
 npm start
 ```
 
-Abra http://localhost:4200. No topo dá para trocar o número do operador e ligar o escopo de supervisão, para simular duas pessoas disputando a mesma demanda (duas abas, um operador em cada).
+Abra http://localhost:4200. No topo dá para trocar o número do operador (de 1 a 8 nos dados de exemplo) e ligar o escopo de supervisão, para simular duas pessoas disputando a mesma demanda (duas abas, um operador em cada).
+
+## Banco de dados local
+
+O enunciado diz que o time forneceria um `docker-compose.yml` com 5 mil demandas de exemplo, mas esse arquivo não chegou até mim. Para conseguir rodar e testar o projeto, criei com a ajuda do Claude um ambiente equivalente:
+
+- `docker-compose.yml`: um MySQL 8.4 com usuário `app` / senha `app` e banco `demandas`.
+- `db/init/01-schema.sql`: as três tabelas exatamente como estão no enunciado.
+- `db/init/02-seed.sql`: 8 operadores e 5 mil demandas em 4 filas (`suporte`, `vendas`, `retencao`, `cobranca`), sendo cerca de 70% abertas, 20% reservadas e 10% encerradas, com histórico coerente em `demand_trace`.
+
+Os scripts de `db/init` rodam só na primeira vez que o volume é criado. Para recriar o banco do zero:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+Se o time enviar o `docker-compose.yml` oficial, basta usá-lo no lugar deste e ajustar a `DATABASE_URL` no `.env`. O código não depende de nada específico destes dados: os testes criam e apagam os próprios registros.
 
 ## Stack
 
@@ -86,6 +105,20 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 
 **Frontend.** A lista usa `rxResource`: cada mudança de filtro, ordenação ou página dispara uma nova consulta e cancela a anterior. A validação condicional do motivo liga e desliga o `Validators.required` conforme o resultado escolhido. O estado do formulário vira signal com `toSignal(statusChanges)`, para o botão reagir na hora com OnPush.
 
+## Evidências dos testes locais
+
+A pasta `evidencias`, no mesmo nível de `backend`, `db` e `frontend`, reúne prints que tirei rodando o projeto na minha máquina, com o banco local do `docker-compose.yml` que eu mesmo criei:
+
+```
+evidencias/
+```
+Os prints mostram:
+
+- o banco subindo com status `healthy` em `docker compose ps`;
+- o `npm test` do backend com todos os testes passando, incluindo o de reservas simultâneas;
+- execuções dos comando rodandoos processos;
+- a lista de demandas com filtros e paginação após testar o uso;
+
 ## O que eu faria com mais tempo
 
 - Índice `(queue, status, updated_at, id)` e paginação por cursor em vez de `OFFSET`, que fica lento em páginas altas.
@@ -94,7 +127,6 @@ Autenticação simplificada: usuário no header `x-user-id`, escopos em `x-scope
 - Atualização em tempo real da lista (SSE ou WebSocket) quando outra pessoa reserva.
 - Validar a observação considerando o texto já sem espaços nas pontas também no frontend.
 - Observabilidade: log estruturado com o id da demanda e do usuário em cada mudança.
-- Adição das outras Stacks que o enunciado não solicitou.
 
 ## Uso de IA
 
@@ -105,12 +137,15 @@ O que foi gerado com IA:
 - o código inicial do backend (rotas, schemas Zod, SQL, transações e autenticação por headers);
 - os testes do backend, incluindo o de reservas simultâneas;
 - o código inicial do frontend (lista paginada, reserva com tratamento do 409 e formulário de encerramento);
+- o `docker-compose.yml` e os scripts de `db/init`, porque o arquivo do time não chegou até mim;
 - este README, a partir das decisões tomadas.
 
 A IA também rodou os testes contra um MySQL 8 e abriu a tela num navegador para confirmar o funcionamento antes de me entregar.
 
 O que eu fiz:
 
-- revisei e estudei o código, para conseguir explicar e alterar cada parte;
-- rodei o projeto e os testes no meu ambiente local;
-- Não recebi no email o `docker-compose.yml` do time para rodar e testar com ele.
+- Revisei e estudei o código, para conseguir explicar e alterar cada parte;
+- Rodei o projeto e os testes no meu ambiente local;
+- Não recebi no email o `docker-compose.yml` do time para rodar e testar com ele;
+- Criação do `docker-compose.yml` para realizar os testes;
+- Evidênciei com prints na pasta `evidencias` o que foi rodado e testado.

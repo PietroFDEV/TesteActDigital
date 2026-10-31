@@ -1,0 +1,25 @@
+# Banco local para desenvolvimento e testes.
+# Cria o schema do enunciado e 5 mil demandas de exemplo na primeira subida (pasta db/init).
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: demandas-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: demandas
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      TZ: UTC
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mysql-data:
