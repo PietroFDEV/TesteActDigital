@@ -1,0 +1,145 @@
+<section class="filters" aria-label="Filtros">
+  <div class="field">
+    <label for="queue">Fila</label>
+    <input
+      id="queue"
+      type="search"
+      placeholder="Ex.: suporte"
+      [value]="queue()"
+      (change)="setQueue($any($event.target).value)"
+    />
+  </div>
+  <div class="field">
+    <label for="status">Situação</label>
+    <select id="status" (change)="setStatus($any($event.target).value)">
+      <option value="" [selected]="status() === null">Todas</option>
+      @for (s of statusOptions; track s) {
+        <option [value]="s" [selected]="status() === s">{{ statusLabel[s] }}</option>
+      }
+    </select>
+  </div>
+  <p class="summary" aria-live="polite">
+    @if (demands.value(); as page) {
+      {{ page.total }} {{ page.total === 1 ? 'demanda' : 'demandas' }}
+    }
+  </p>
+</section>
+
+<div class="layout" [class.with-panel]="finishing()">
+  <div class="table-wrap" [attr.aria-busy]="demands.isLoading()">
+    @if (demands.error()) {
+      <div class="state error" role="alert">
+        <p>Não foi possível carregar as demandas.</p>
+        <button type="button" class="ghost" (click)="demands.reload()">Tentar de novo</button>
+      </div>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th scope="col" class="num" [attr.aria-sort]="ariaSort('id')">
+              <button type="button" class="sort" (click)="toggleSort('id')">
+                Nº <span class="arrow" aria-hidden="true">{{ sort() === 'id' ? (order() === 'asc' ? '▲' : '▼') : '' }}</span>
+              </button>
+            </th>
+            <th scope="col">Demanda</th>
+            <th scope="col">Situação</th>
+            <th scope="col">Responsável</th>
+            <th scope="col" [attr.aria-sort]="ariaSort('updatedAt')">
+              <button type="button" class="sort" (click)="toggleSort('updatedAt')">
+                Atualizada <span class="arrow" aria-hidden="true">{{ sort() === 'updatedAt' ? (order() === 'asc' ? '▲' : '▼') : '' }}</span>
+              </button>
+            </th>
+            <th scope="col"><span class="visually-hidden">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (d of demands.value()?.items ?? []; track d.id) {
+            <tr [attr.data-status]="d.status" [class.mine]="isMine(d)">
+              <td class="num">{{ d.id }}</td>
+              <td>
+                <span class="title">{{ d.title }}</span>
+                <span class="queue">{{ d.queue }}</span>
+                @if (messages().get(d.id); as m) {
+                  <span class="row-message" [class]="m.kind" role="status">{{ m.text }}</span>
+                }
+              </td>
+              <td>
+                <span class="status">{{ statusLabel[d.status] }}</span>
+                @if (d.status === 3 && d.outcome) {
+                  <span class="outcome">
+                    {{ d.outcome === 'success' ? 'Resolvida' : reasonLabel(d.failureReason) }}
+                  </span>
+                }
+              </td>
+              <td>{{ d.worker ? (isMine(d) ? 'Você' : d.worker.name) : '—' }}</td>
+              <td class="num">{{ d.updatedAt | date: 'dd/MM/yy HH:mm' }}</td>
+              <td class="actions">
+                @if (d.status === 1) {
+                  <button
+                    type="button"
+                    class="primary"
+                    [disabled]="pending().has(d.id)"
+                    [attr.aria-label]="'Reservar demanda ' + d.id"
+                    (click)="reserve(d)"
+                  >
+                    {{ pending().has(d.id) ? 'Reservando…' : 'Reservar' }}
+                  </button>
+                } @else if (canFinish(d)) {
+                  <button
+                    type="button"
+                    class="ghost"
+                    [attr.aria-label]="'Encerrar demanda ' + d.id"
+                    (click)="openFinish(d)"
+                  >
+                    Encerrar
+                  </button>
+                }
+              </td>
+            </tr>
+          } @empty {
+            @if (!demands.isLoading()) {
+              <tr>
+                <td colspan="6" class="state">Nenhuma demanda com esses filtros. Limpe a fila ou a situação para ver mais.</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    }
+
+    <nav class="pager" aria-label="Paginação">
+      <button type="button" class="ghost" [disabled]="page() <= 1 || demands.isLoading()" (click)="goTo(page() - 1)">
+        Anterior
+      </button>
+      <span>Página {{ page() }} de {{ totalPages() }}</span>
+      <button
+        type="button"
+        class="ghost"
+        [disabled]="page() >= totalPages() || demands.isLoading()"
+        (click)="goTo(page() + 1)"
+      >
+        Próxima
+      </button>
+    </nav>
+  </div>
+
+  @if (finishing(); as d) {
+    <aside class="panel" aria-labelledby="finish-title">
+      <header>
+        <h2 id="finish-title">Encerrar demanda {{ d.id }}</h2>
+        <p class="panel-sub">{{ d.title }}</p>
+      </header>
+      @if (d.status === 2) {
+        <app-finish-form
+          [demand]="d"
+          (finished)="onFinished($event)"
+          (refreshed)="replaceRow($event)"
+          (cancelled)="finishing.set(null)"
+        />
+      } @else {
+        <p>Esta demanda não está mais reservada.</p>
+        <button type="button" class="ghost" (click)="finishing.set(null)">Fechar</button>
+      }
+    </aside>
+  }
+</div>
