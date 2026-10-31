@@ -1,0 +1,56 @@
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <fieldset class="outcome">
+    <legend>Resultado do atendimento</legend>
+    <label class="choice">
+      <input type="radio" formControlName="outcome" value="success" />
+      Resolvida
+    </label>
+    <label class="choice">
+      <input type="radio" formControlName="outcome" value="failure" />
+      Não resolvida
+    </label>
+  </fieldset>
+
+  @if (outcome() === 'failure') {
+    <div class="field">
+      <label for="failureReason">Motivo</label>
+      <select
+        id="failureReason"
+        formControlName="failureReason"
+        [attr.aria-invalid]="form.controls.failureReason.invalid && form.controls.failureReason.touched"
+        aria-describedby="failureReason-help"
+      >
+        <option value="" disabled>Escolha o motivo</option>
+        @for (r of reasons; track r.key) {
+          <option [value]="r.key">{{ r.label }}</option>
+        }
+      </select>
+      <p id="failureReason-help" class="hint">Obrigatório quando a demanda não foi resolvida.</p>
+    </div>
+  }
+
+  <div class="field">
+    <label for="note">Observação <span class="optional">(opcional)</span></label>
+    <textarea
+      id="note"
+      rows="4"
+      formControlName="note"
+      [attr.aria-invalid]="form.controls.note.invalid"
+      aria-describedby="note-count"
+    ></textarea>
+    <p id="note-count" class="hint" [class.over]="noteLength() > noteMax">
+      {{ noteLength() }} de {{ noteMax }} caracteres
+    </p>
+  </div>
+
+  @if (error(); as message) {
+    <p class="error" role="alert">{{ message }}</p>
+  }
+
+  <div class="actions">
+    <button type="button" class="ghost" (click)="cancelled.emit()">Cancelar</button>
+    <button type="submit" class="primary" [disabled]="!canSubmit()">
+      {{ submitting() ? 'Encerrando…' : 'Encerrar demanda' }}
+    </button>
+  </div>
+</form>
